@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ランチタイム放送台本（インポート機能拡張）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .reading-text {
+            line-height: 1.8;
+            font-size: 1.1rem;
+        }
+        /* contenteditable エリアのスタイル */
+        .editable-script {
+            padding: 1rem;
+            border: 2px dashed #d1d5db;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease-in-out;
+            cursor: text;
+            min-height: 400px;
+        }
+        .editable-script[contenteditable="true"] {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+            background-color: #f7f9ff;
+        }
+        .editable-script[contenteditable="false"] {
+            cursor: default;
+            border-style: solid;
+            border-color: #f3f4f6;
+            background-color: #ffffff;
+        }
+
+        /* 放送日入力欄のスタイル */
+        .date-input {
+            background-color: transparent;
+            border: 1px solid transparent;
+            border-bottom: 1px dashed #ffffff80;
+            transition: all 0.2s;
+            font-weight: bold;
+            color: inherit;
+            outline: none;
+            width: 180px;
+            text-align: left;
+            padding: 2px 0;
+            box-sizing: border-box;
+        }
+        .date-input[readonly] {
+            cursor: default;
+            border-bottom: 1px solid transparent;
+        }
+        .date-input:not([readonly]) {
+            border-bottom: 1px dashed #fff;
+            background-color: #ffffff30;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        
+        /* タブ名編集エリアのスタイル */
+        .tab-title {
+            background-color: transparent;
+            transition: all 0.1s;
+            padding: 0 4px;
+            margin: 0;
+            outline: none;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        /* 編集不可時のタブ名 */
+        .tab-title[contenteditable="false"] {
+            cursor: default;
+            border-bottom: 1px solid transparent;
+        }
+
+        /* 編集可能時のタブ名 */
+        .tab-title[contenteditable="true"] {
+            border: 1px solid #3b82f6;
+            background-color: #ffffff;
+            border-radius: 4px;
+            color: #3b82f6;
+        }
+
+        /* タブのアクティブカラー */
+        .header-bg-blue { background-color: #3b82f6; }
+        .header-bg-purple { background-color: #9333ea; }
+        .header-bg-green { background-color: #10b981; }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tab-btn {
+            touch-action: manipulation;
+            user-select: none;
+            flex-grow: 1;
+            min-width: 0;
+        }
+        /* カスタムメッセージボックス */
+        #message-box {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            transition: opacity 0.3s ease-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            min-width: 200px;
+            text-align: center;
+        }
+        /* スクロールバー非表示 (見た目重視) */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* モーダル背景 */
+        .modal-bg {
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-2 md:p-8 pb-20" onload="initialize()">
+
+    <!-- カスタムメッセージボックス -->
+    <div id="message-box" class="hidden opacity-0"></div>
+
+    <!-- インポート用モーダル -->
+    <div id="import-modal" class="fixed inset-0 modal-bg hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-2xl w-full max-w-lg p-6 space-y-4">
+            <h2 class="text-xl font-bold text-gray-800 border-b pb-2 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm14 3a1 1 0 011 1v6a1 1 0 11-2 0V7a1 1 0 011-1z" clip-rule="evenodd" />
+                    <path fill-rule="evenodd" d="M11 5a1 1 0 10-2 0v10a1 1 0 102 0V5z" clip-rule="evenodd" />
+                    <path d="M12.293 15.293a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414L10 12.586l2.293-2.293a1 1 0 011.414 1.414l-3 3z" />
+                </svg>
+                データインポート
+            </h2>
+            
+            <p class="text-sm font-bold text-gray-800">1. JSONデータ貼り付け</p>
+            <textarea id="import-json-area" class="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 text-sm" placeholder="ここにエクスポートしたJSONデータをペーストしてください..." onfocus="this.select()"></textarea>
+
+            <p class="text-sm font-bold text-gray-800 pt-2 border-t">2. インポート方法の選択</p>
+            <div class="space-y-3">
+                <label class="flex items-center space-x-3 cursor-pointer p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <input type="radio" name="import-mode" value="overwrite" checked class="form-radio text-red-600 h-5 w-5">
+                    <div class="leading-tight">
+                        <span class="font-bold text-red-700">完全に置き換える (上書き)</span>
+                        <p class="text-xs text-red-600">現在のアプリ内のデータはすべて消去され、インポートデータに置き換わります。</p>
+                    </div>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <input type="radio" name="import-mode" value="merge" class="form-radio text-green-600 h-5 w-5">
+                    <div class="leading-tight">
+                        <span class="font-bold text-green-700">既存データに追加する (マージ)</span>
+                        <p class="text-xs text-green-600">現在のデータは保持しつつ、インポートデータに含まれる新しい放送が追加されます。**キーが重複する場合は上書きされます。**</p>
+                    </div>
+                </label>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4">
+                <button onclick="closeImportModal()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition">キャンセル</button>
+                <button onclick="importDataFromJson()" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition">インポート実行</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="max-w-4xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden">
+        <!-- Header -->
+        <header class="bg-gray-800 text-white p-4 text-center flex flex-col justify-center items-center space-y-3">
+            <h1 class="text-xl md:text-2xl font-bold">ランチタイム放送 デジタル台本</h1>
+            <div class="flex flex-wrap justify-center gap-3">
+                <!-- 編集ロック/アンロックボタン -->
+                <button onclick="toggleEditMode()" id="edit-toggle-btn" class="flex items-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-gray-900 text-sm font-bold py-2 px-3 rounded-lg transition duration-150 ease-in-out shadow-md">
+                    <svg id="lock-icon" class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 12a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057 .458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                    </svg>
+                    <svg id="pen-icon" class="h-5 w-5 hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zm-5.464 5.464a1 1 0 000 1.414l.707.707L11.5 8.707l-.707-.707a1 1 0 00-1.414 0z" />
+                        <path fill-rule="evenodd" d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zm-5.464 5.464a1 1 0 000 1.414l.707.707L11.5 8.707l-.707-.707a1 1 0 00-1.414 0zM12.5 16A3.5 3.5 0 019 12.5v-1a1 1 0 00-2 0v1a5.5 5.5 0 005.5 5.5h1a1 1 0 000-2h-1z" clip-rule="evenodd" />
+                    </svg>
+                    <span id="edit-status-text">読むモード</span>
+                </button>
+
+                <!-- コピーボタン -->
+                <button onclick="copyScript()" class="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-2 px-3 rounded-lg transition duration-150 ease-in-out shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
+                        <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
+                    </svg>
+                    <span>台本をコピー</span>
+                </button>
+                
+                <!-- データエクスポートボタン -->
+                <button onclick="exportDataToJson()" class="flex items-center space-x-2 bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-2 px-3 rounded-lg transition duration-150 ease-in-out shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                    </svg>
+                    <span>データエクスポート (.json)</span>
+                </button>
+
+                <!-- データインポートボタン -->
+                <button onclick="showImportModal()" class="flex items-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-bold py-2 px-3 rounded-lg transition duration-150 ease-in-out shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm14 3a1 1 0 011 1v6a1 1 0 11-2 0V7a1 1 0 011-1z" clip-rule="evenodd" />
+                        <path fill-rule="evenodd" d="M11 5a1 1 0 10-2 0v10a1 1 0 102 0V5z" clip-rule="evenodd" />
+                        <path d="M12.293 15.293a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414L10 12.586l2.293-2.293a1 1 0 011.414 1.414l-3 3z" />
+                    </svg>
+                    <span>データインポート (.json)</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Tabs Container -->
+        <div id="tabs-container" class="flex border-b border-gray-200 bg-gray-50 overflow-x-auto scrollbar-hide">
+            <!-- JavaScriptでタブが挿入されます -->
+        </div>
+
+        <!-- Content Container -->
+        <div id="content-container" class="p-4 md:p-8 bg-white min-h-[600px]">
+            <!-- JavaScriptでコンテンツが挿入されます -->
+        </div>
+    </div>
+
+    <script>
+        // 最大放送数
+        const MAX_BROADCASTS = 20; 
+        // 放送データのキーを保存するための配列
+        let broadcastKeys = [];
+        // 現在アクティブなタブID
+        let activeTab = 'broadcast-001';
+        // 編集モードの状態
+        let isEditing = false;
+        
+        // ローカルストレージキーのプレフィックス
+        const KEY_PREFIX = 'broadcast_';
+        const KEY_LIST = 'broadcast_keys';
+
+        /**
+         * メッセージボックスを表示する関数 (alertの代わり)
+         */
+        function showMessage(message, type) {
+            const box = document.getElementById('message-box');
+            box.textContent = message;
+            box.className = 'opacity-0';
+            box.classList.remove('bg-green-500', 'bg-blue-500', 'bg-red-500', 'bg-purple-500');
+
+            if (type === 'success') {
+                box.classList.add('bg-green-500');
+            } else if (type === 'info') {
+                box.classList.add('bg-blue-500');
+            } else if (type === 'error') {
+                box.classList.add('bg-red-500');
+            } else if (type === 'warn') {
+                box.classList.add('bg-purple-500');
+            }
+            
+            setTimeout(() => {
+                box.classList.remove('hidden');
+                setTimeout(() => {
+                    box.classList.add('opacity-100');
+                }, 10);
+            }, 10);
+
+            setTimeout(() => {
+                box.classList.remove('opacity-100');
+                setTimeout(() => {
+                    box.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        }
+
+        /**
+         * 放送データをlocalStorageに保存します。
+         */
+        function saveBroadcastData(key, data) {
+            localStorage.setItem(KEY_PREFIX + key, JSON.stringify(data));
+        }
+
+        /**
+         * 放送データをlocalStorageからロードします。
+         */
+        function loadBroadcastData(key) {
+            const data = localStorage.getItem(KEY_PREFIX + key);
+            return data ? JSON.parse(data) : null;
+        }
+
+        /**
+         * 放送キーのリストを保存します。
+         */
+        function saveBroadcastKeys() {
+            localStorage.setItem(KEY_LIST, JSON.stringify(broadcastKeys));
+        }
+
+        /**
+         * 放送キーのリストをロードします。
+         */
+        function loadBroadcastKeys() {
+            const savedKeys = localStorage.getItem(KEY_LIST);
+            if (savedKeys && JSON.parse(savedKeys).length > 0) {
+                broadcastKeys = JSON.parse(savedKeys);
+            } else {
+                // 初回起動時またはキーリストが空の場合、初期データを作成
+                createInitialData();
+                saveBroadcastKeys();
+            }
+            
+            // activeTabが既存のキーにない場合は、最初のキーに設定
+            if (!broadcastKeys.includes(activeTab)) {
+                activeTab = broadcastKeys[0];
+            }
+        }
+        
+        /**
+         * 初期データを作成します。
+         */
+        function createInitialData() {
+            const defaultContent1 = `
+                <!-- Opening -->
+                <section class="border-l-4 border-blue-500 pl-4 mb-8">
+                    <h3 class="text-sm font-bold text-blue-500 uppercase mb-2 tracking-wider">12:35 オープニング</h3>
+                    <div class="space-y-4 reading-text">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <p class="font-bold text-gray-700 mb-1">放送委員</p>
+                            <p>全・宝仙小の皆さん、こんにちは！<br>
+                            さあ、始まりました！「Lunchtime music」のお時間です！</p>
+                        </div>
+                        <div class="bg-gray-50 p-2 rounded border border-gray-200 text-sm text-gray-600 flex items-center gap-2">
+                            <span class="bg-gray-200 px-2 py-0.5 rounded text-xs font-bold">動作</span>
+                            CD音量を下げ、BGMとして流す
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <p class="font-bold text-gray-700 mb-1">放送委員</p>
+                            <p>それではまず、ジブリ、そして「こたえあわせ」を続けて放送します。**ぜひお楽しみください！**</p>
+                        </div>
+                    </div>
+                </section>
+                <section class="border-4 border-yellow-400 rounded-xl overflow-hidden shadow-sm relative mb-8">
+                    <div class="bg-yellow-400 text-black font-bold py-2 px-4 flex justify-between items-center">
+                        <span>★ 給食雑学クイズコーナー</span>
+                        <span class="text-xs bg-white text-yellow-800 px-2 py-1 rounded">12:43頃〜</span>
+                    </div>
+                    <div class="p-6 bg-yellow-50 space-y-6 reading-text">
+                        <p class="font-bold text-red-700">問題です！日本の給食が始まったのは、どんな目的からだったでしょうか？</p>
+                        <p>正解は、貧しい子どもたちへの支援のためでした。</p>
+                    </div>
+                </section>
+                <section class="border-l-4 border-green-500 pl-4 pt-4">
+                    <h3 class="text-sm font-bold text-green-500 uppercase mb-2 tracking-wider">12:48頃 〜 エンディング</h3>
+                    <div class="bg-green-50 p-4 rounded-lg reading-text">
+                        <p class="font-bold text-gray-700 mb-1">放送委員</p>
+                        <p>今日の放送の担当は、5年の（名前）と（名前）でした！<br>
+                        また明日もお会いしましょう！さようなら！</p>
+                    </div>
+                </section>
+            `;
+            broadcastKeys = ['broadcast-001', 'broadcast-002', 'broadcast-003'];
+            saveBroadcastData('broadcast-001', { name: '放送 1', date: '12月1日（月）', content: defaultContent1 });
+            saveBroadcastData('broadcast-002', { name: '放送 2', date: '12月15日（月）', content: defaultContent1.replace(/給食雑学クイズコーナー/g, '学校のふしぎ・歴史雑学') });
+            saveBroadcastData('broadcast-003', { name: '放送 3', date: '12月22日（月）', content: defaultContent1.replace(/給食雑学クイズコーナー/g, '自由企画コーナー') });
+        }
+
+        /**
+         * 放送データのHTMLテンプレートを生成します。
+         */
+        function createBroadcastHtml(key, data, colorClass) {
+            return `
+                <div id="broadcast-${key}" class="script-content hidden fade-in">
+                    <div id="header-${key}" class="${colorClass} text-white p-3 rounded-t-lg flex justify-between items-center">
+                        <!-- 放送日編集エリア -->
+                        <div class="flex items-center space-x-2">
+                            <span class="font-bold text-sm md:text-base">放送日：</span>
+                            <input type="text" id="date-${key}" value="${data.date}" class="date-input text-sm md:text-base" readonly data-key="${key}">
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-xs md:text-sm">担当：5年 放送委員</span>
+                            
+                            <!-- 複製ボタン -->
+                            <button onclick="duplicateBroadcast('${key}')" class="flex items-center space-x-1 bg-white hover:bg-gray-100 text-gray-800 text-xs font-bold py-1 px-2 rounded-lg transition duration-150 ease-in-out shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z" />
+                                    <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h6a2 2 0 00-2-2H5z" />
+                                </svg>
+                                <span>複製</span>
+                            </button>
+                            
+                            <!-- 削除ボタン (編集モードでのみ表示) -->
+                            <button onclick="deleteBroadcastConfirmation('${key}')" id="delete-btn-${key}" class="delete-btn hidden flex items-center space-x-1 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1 px-2 rounded-lg transition duration-150 ease-in-out shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 10a1 1 0 112 0v5a1 1 0 11-2 0v-5zm4 0a1 1 0 112 0v5a1 1 0 11-2 0v-5z" clip-rule="evenodd" />
+                                </svg>
+                                <span>削除</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 編集可能なエリア -->
+                    <div id="editable-${key}" contenteditable="false" class="editable-script border-t-0 rounded-t-none">
+                        ${data.content}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * タブボタンのHTMLテンプレートを生成します。
+         */
+        function createTabButtonHtml(key, data) {
+            return `
+                <button onclick="switchTab('${key}')" id="btn-${key}" class="tab-btn py-4 px-1 text-center font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors border-b-4 border-transparent flex-shrink-0" style="min-width: 80px;">
+                    <span class="block text-sm md:text-lg tab-title"
+                          id="name-${key}"
+                          contenteditable="false"
+                          data-key="${key}"
+                          oninput="handleNameEdit('${key}')"
+                          onblur="handleNameEdit('${key}')">
+                        ${data.name}
+                    </span>
+                    <span class="hidden md:block text-xs font-normal opacity-70">♪ [BGM検討中]</span>
+                </button>
+            `;
+        }
+
+        /**
+         * すべてのタブとコンテンツを再構築し、UIを更新します。
+         */
+        function renderBroadcasts() {
+            const tabsContainer = document.getElementById('tabs-container');
+            const contentContainer = document.getElementById('content-container');
+            tabsContainer.innerHTML = '';
+            contentContainer.innerHTML = '';
+            
+            // 色のローテーション配列
+            const colors = ['header-bg-blue', 'header-bg-purple', 'header-bg-green', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-600', 'bg-teal-500', 'bg-orange-500'];
+
+            broadcastKeys.forEach((key, index) => {
+                const data = loadBroadcastData(key);
+                if (data) {
+                    const colorClass = colors[index % colors.length];
+                    
+                    tabsContainer.insertAdjacentHTML('beforeend', createTabButtonHtml(key, data));
+                    contentContainer.insertAdjacentHTML('beforeend', createBroadcastHtml(key, data, colorClass));
+                }
+            });
+
+            switchTab(activeTab);
+            updateEditModeUI();
+            setupEventListeners();
+        }
+
+        /**
+         * 編集モードの状態（isEditing）に基づいてUIを更新します。
+         */
+        function updateEditModeUI() {
+            const statusText = document.getElementById('edit-status-text');
+            const lockIcon = document.getElementById('lock-icon');
+            const penIcon = document.getElementById('pen-icon');
+            const btn = document.getElementById('edit-toggle-btn');
+
+            // 台本エリア、日付入力欄、タブ名編集可否を切り替え
+            const editableScripts = document.querySelectorAll('.editable-script');
+            const dateInputs = document.querySelectorAll('.date-input');
+            const tabTitles = document.querySelectorAll('.tab-title');
+            const deleteButtons = document.querySelectorAll('.delete-btn');
+
+            editableScripts.forEach(script => {
+                script.contentEditable = isEditing ? 'true' : 'false';
+            });
+            dateInputs.forEach(input => {
+                input.readOnly = !isEditing;
+            });
+            tabTitles.forEach(title => {
+                title.contentEditable = isEditing ? 'true' : 'false';
+            });
+
+            // 削除ボタンの表示/非表示を切り替え
+            deleteButtons.forEach(btn => {
+                if (broadcastKeys.length <= 1) {
+                    btn.classList.add('hidden');
+                } else if (isEditing) {
+                    btn.classList.remove('hidden');
+                } else {
+                    btn.classList.add('hidden');
+                }
+            });
+
+
+            if (isEditing) {
+                statusText.textContent = '編集をロック';
+                lockIcon.classList.add('hidden');
+                penIcon.classList.remove('hidden');
+                btn.classList.replace('bg-yellow-500', 'bg-red-500');
+                btn.classList.replace('text-gray-900', 'text-white');
+                showMessage('編集モード: ON (ペン)', 'info');
+            } else {
+                statusText.textContent = '読むモード';
+                lockIcon.classList.remove('hidden');
+                penIcon.classList.add('hidden');
+                btn.classList.replace('bg-red-500', 'bg-yellow-500');
+                btn.classList.replace('text-white', 'text-gray-900');
+                showMessage('読むモード: ロック中', 'success');
+            }
+        }
+
+        /**
+         * 編集モードを切り替えます。
+         */
+        function toggleEditMode() {
+            isEditing = !isEditing;
+            updateEditModeUI();
+        }
+
+        /**
+         * タブを切り替えます。
+         */
+        function switchTab(key) {
+            activeTab = key;
+
+            document.querySelectorAll('#content-container > div.script-content').forEach(content => {
+                content.classList.add('hidden');
+                content.classList.remove('fade-in');
+            });
+            const activeContent = document.getElementById(`broadcast-${key}`);
+            if (activeContent) {
+                activeContent.classList.remove('hidden');
+                activeContent.classList.add('fade-in');
+            }
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                const borderClasses = Array.from(btn.classList).filter(cls => cls.startsWith('border-'));
+                btn.classList.remove('text-gray-800', 'bg-white', 'border-b-4', ...borderClasses);
+            });
+
+            const activeTabBtn = document.getElementById(`btn-${key}`);
+            if (activeTabBtn) {
+                const activeContentHeader = document.getElementById(`header-${key}`);
+                let colorClass = 'border-blue-500';
+
+                if (activeContentHeader) {
+                    const classList = Array.from(activeContentHeader.classList);
+                    colorClass = classList.find(cls => cls.startsWith('header-bg-') || cls.startsWith('bg-')) || colorClass;
+                    colorClass = colorClass.replace('header-bg-', 'border-');
+                    colorClass = colorClass.replace('bg-', 'border-');
+
+                }
+
+                activeTabBtn.classList.add('text-gray-800', 'bg-white', 'border-b-4', colorClass);
+                activeTabBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        /**
+         * 放送名が編集されたとき、またはフォーカスが外れたときにデータを保存します。
+         */
+        function handleNameEdit(key) {
+            if (!isEditing) return;
+
+            const nameElement = document.getElementById(`name-${key}`);
+            if (nameElement) {
+                const newName = nameElement.textContent.trim() || `無題の放送`;
+                
+                const data = loadBroadcastData(key);
+                if (data) {
+                    data.name = newName;
+                    saveBroadcastData(key, data);
+                }
+            }
+        }
+
+        /**
+         * 放送内容や日付が編集されたときにデータを保存します。
+         */
+        function saveCurrentBroadcast(key) {
+            const scriptElement = document.getElementById(`editable-${key}`);
+            const dateInput = document.getElementById(`date-${key}`);
+
+            if (scriptElement && dateInput) {
+                const data = loadBroadcastData(key);
+                if (data) {
+                    data.content = scriptElement.innerHTML;
+                    data.date = dateInput.value;
+                    saveBroadcastData(key, data);
+                }
+            }
+        }
+
+        /**
+         * 複製ボタンが押されたときの処理。
+         */
+        function duplicateBroadcast(sourceKey) {
+            if (broadcastKeys.length >= MAX_BROADCASTS) {
+                showMessage(`放送の数は最大${MAX_BROADCASTS}個までです。`, 'error');
+                return;
+            }
+
+            const sourceData = loadBroadcastData(sourceKey);
+            if (!sourceData) return;
+
+            const newId = crypto.randomUUID();
+            const newKey = `broadcast-${newId.substring(0, 3)}`;
+
+            const newName = sourceData.name + ' (コピー)';
+            const newData = {
+                name: newName.length > 20 ? newName.substring(0, 17) + '...' : newName,
+                date: sourceData.date,
+                content: sourceData.content
+            };
+            saveBroadcastData(newKey, newData);
+
+            broadcastKeys.push(newKey);
+            saveBroadcastKeys();
+
+            renderBroadcasts();
+            switchTab(newKey);
+            showMessage(`「${sourceData.name}」を複製しました！`, 'success');
+        }
+
+        /**
+         * 台本の内容をコピーします。
+         */
+        function copyScript() {
+            const scriptElement = document.getElementById(`editable-${activeTab}`);
+            if (scriptElement) {
+                // innerTextまたはtextContentを使用して、HTMLタグを除いたテキストを取得
+                const textToCopy = scriptElement.innerText || scriptElement.textContent;
+                
+                try {
+                    const tempTextArea = document.createElement('textarea');
+                    tempTextArea.value = textToCopy;
+                    document.body.appendChild(tempTextArea);
+                    tempTextArea.select();
+                    // navigator.clipboard.writeTextが使用できない環境のためexecCommandを使用
+                    document.execCommand('copy');
+                    document.body.removeChild(tempTextArea);
+                    
+                    showMessage('台本のテキストをクリップボードにコピーしました！', 'success');
+                } catch (err) {
+                    showMessage('コピーに失敗しました...', 'error');
+                    console.error('Copy failed:', err);
+                }
+            }
+        }
+
+        /**
+         * 編集可能な要素の入力変更を監視し、データを自動保存します。
+         */
+        function setupEventListeners() {
+            document.querySelectorAll('.editable-script, .date-input').forEach(el => {
+                el.removeEventListener('input', handleContentChange);
+                el.removeEventListener('blur', handleContentChange);
+            });
+
+            document.querySelectorAll('.editable-script, .date-input').forEach(el => {
+                el.addEventListener('input', handleContentChange);
+                el.addEventListener('blur', handleContentChange);
+            });
+        }
+
+        /**
+         * コンテンツまたは日付が変更されたときの共通処理（自動保存）
+         */
+        function handleContentChange(event) {
+            if (!isEditing) return;
+            
+            const key = event.target.id.split('-').length > 1 ? event.target.id.split('-')[1] : activeTab;
+            
+            if (event.target.classList.contains('tab-title')) return; 
+
+            clearTimeout(window.saveTimer);
+            window.saveTimer = setTimeout(() => {
+                saveCurrentBroadcast(key);
+            }, 500);
+        }
+
+        /**
+         * 放送を削除するための確認処理
+         */
+        function deleteBroadcastConfirmation(key) {
+            if (!isEditing) {
+                showMessage('読むモードでは削除できません。編集モードに切り替えてください。', 'error');
+                return;
+            }
+            
+            if (broadcastKeys.length <= 1) {
+                showMessage('最後の放送は削除できません。新しい放送を作成してください。', 'error');
+                return;
+            }
+
+            const broadcastData = loadBroadcastData(key);
+            const name = broadcastData ? broadcastData.name : 'この放送';
+
+            // window.confirmを使用
+            if (window.confirm(`本当に「${name}」を削除してもよろしいですか？\nこの操作は元に戻せません。`)) {
+                deleteBroadcast(key);
+            }
+        }
+
+        /**
+         * 放送を削除し、UIを更新します。
+         */
+        function deleteBroadcast(key) {
+            const index = broadcastKeys.indexOf(key);
+            if (index > -1) {
+                broadcastKeys.splice(index, 1);
+                saveBroadcastKeys();
+            } else {
+                return;
+            }
+            
+            localStorage.removeItem(KEY_PREFIX + key);
+
+            let newActiveKey = null;
+            if (broadcastKeys.length > 0) {
+                newActiveKey = broadcastKeys[0];
+            } else {
+                createInitialDataForEmpty();
+                loadBroadcastKeys();
+                newActiveKey = broadcastKeys[0];
+            }
+            
+            activeTab = newActiveKey;
+            renderBroadcasts();
+            showMessage(`放送「${key}」を削除しました。`, 'success');
+        }
+
+        /**
+         * 全ての放送が削除されたときに、初期放送を1つだけ作成し直す
+         */
+        function createInitialDataForEmpty() {
+            const defaultContent = `
+                <!-- 新しく作成された放送 -->
+                <section class="border-l-4 border-blue-500 pl-4 mb-8">
+                    <h3 class="text-sm font-bold text-blue-500 uppercase mb-2 tracking-wider">新しい台本</h3>
+                    <div class="space-y-4 reading-text">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <p class="font-bold text-gray-700 mb-1">放送委員</p>
+                            <p>台本の内容をここに入力してください。</p>
+                        </div>
+                    </div>
+                </section>
+            `;
+            const newId = crypto.randomUUID();
+            const newKey = `broadcast-${newId.substring(0, 3)}`;
+            
+            broadcastKeys = [newKey];
+            saveBroadcastData(newKey, { name: '新しい放送', date: '日付未定', content: defaultContent });
+        }
+
+        // --- データエクスポート機能 ---
+        /**
+         * すべての放送データを取得し、JSONファイルとしてダウンロードします。
+         */
+        function exportDataToJson() {
+            // データの整形
+            const exportData = {};
+            // 1. キーリストを保存
+            exportData[KEY_LIST] = broadcastKeys; 
+            
+            // 2. 個別データをキーで取得して保存
+            broadcastKeys.forEach(key => {
+                exportData[KEY_PREFIX + key] = loadBroadcastData(key);
+            });
+
+            const jsonString = JSON.stringify(exportData, null, 2);
+            
+            // ファイルとしてダウンロード
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'lunch_broadcast_data_' + new Date().toISOString().substring(0, 10) + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showMessage('全データをJSONファイルとしてエクスポートしました！', 'success');
+        }
+
+
+        // --- データインポート機能 (拡張) ---
+
+        /**
+         * インポートモーダルを表示します。
+         */
+        function showImportModal() {
+            document.getElementById('import-modal').classList.remove('hidden');
+            document.getElementById('import-json-area').value = '';
+        }
+
+        /**
+         * インポートモーダルを閉じます。
+         */
+        function closeImportModal() {
+            document.getElementById('import-modal').classList.add('hidden');
+        }
+
+        /**
+         * JSONデータを解析し、localStorageにインポートします。
+         */
+        function importDataFromJson() {
+            const jsonText = document.getElementById('import-json-area').value.trim();
+            const importMode = document.querySelector('input[name="import-mode"]:checked').value;
+
+            if (!jsonText) {
+                showMessage('JSONデータを貼り付けてください。', 'error');
+                return;
+            }
+            
+            if (!window.confirm(`インポートモード: 「${importMode === 'overwrite' ? '完全に置き換える' : '既存データに追加する'}」で実行します。よろしいですか？`)) {
+                return;
+            }
+
+
+            try {
+                const importData = JSON.parse(jsonText);
+
+                // JSONの基本構造チェック
+                if (!importData[KEY_LIST] || !Array.isArray(importData[KEY_LIST])) {
+                    showMessage('無効なデータ形式です。エクスポートしたJSONファイルであることを確認してください。', 'error');
+                    return;
+                }
+                
+                let newBroadcastKeys = [...broadcastKeys];
+                let importedKeysCount = 0;
+                let overwrittenKeysCount = 0;
+
+                if (importMode === 'overwrite') {
+                    // 1. 完全に置き換えるモード
+                    
+                    // 現在のデータをクリア
+                    localStorage.clear();
+                    newBroadcastKeys = [];
+
+                    // インポートデータをすべて保存
+                    importData[KEY_LIST].forEach(key => {
+                        const dataKey = KEY_PREFIX + key;
+                        if (importData[dataKey]) {
+                            localStorage.setItem(dataKey, JSON.stringify(importData[dataKey]));
+                            newBroadcastKeys.push(key);
+                            importedKeysCount++;
+                        }
+                    });
+
+                } else if (importMode === 'merge') {
+                    // 2. 既存データに追加モード
+                    
+                    const existingKeysSet = new Set(broadcastKeys);
+
+                    importData[KEY_LIST].forEach(key => {
+                        const dataKey = KEY_PREFIX + key;
+                        if (importData[dataKey]) {
+                            // キーが存在するかチェック
+                            if (existingKeysSet.has(key)) {
+                                // 既存のキーは上書き
+                                overwrittenKeysCount++;
+                            } else {
+                                // 新しいキーは追加
+                                newBroadcastKeys.push(key);
+                                importedKeysCount++;
+                            }
+                            
+                            // データを保存（上書きまたは新規）
+                            localStorage.setItem(dataKey, JSON.stringify(importData[dataKey]));
+                        }
+                    });
+                    
+                    // キーリストをユニークにして、新しい並び順で更新
+                    newBroadcastKeys = Array.from(new Set(newBroadcastKeys));
+                }
+
+                // キーリストを更新し、保存
+                broadcastKeys = newBroadcastKeys;
+                saveBroadcastKeys();
+                
+                // 成功処理
+                closeImportModal();
+                if (broadcastKeys.length > 0) {
+                    activeTab = broadcastKeys[0]; // 最初のタブをアクティブにする
+                    renderBroadcasts();
+                } else {
+                    createInitialDataForEmpty(); // データが空になった場合は初期データを再生成
+                    loadBroadcastKeys();
+                    renderBroadcasts();
+                }
+
+                if (importMode === 'overwrite') {
+                    showMessage(`上書きインポート成功！${importedKeysCount}件の放送を復元しました。`, 'success');
+                } else {
+                     showMessage(`マージインポート成功！${importedKeysCount}件追加、${overwrittenKeysCount}件更新しました。`, 'success');
+                }
+
+
+            } catch (e) {
+                console.error("Import Error:", e);
+                showMessage('JSONの解析またはインポートに失敗しました。データ形式を確認してください。', 'error');
+            }
+        }
+        
+        /**
+         * 初期化処理
+         */
+        function initialize() {
+            loadBroadcastKeys();
+            renderBroadcasts();
+            isEditing = false; // 初期状態は読むモード
+            updateEditModeUI();
+        }
+        
+        window.onload = initialize;
+    </script>
+</body>
+</html>
