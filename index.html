@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>放送原稿ツール</title>
+
+<!-- --- できるだけシンプルな CSS --- -->
+<style>
+    body { font-family: sans-serif; padding: 20px; }
+    textarea { width:100%; height:160px; border:1px solid #aaa; padding:8px; }
+    .box { border:1px solid #999; padding:10px; margin-bottom:16px; }
+    .page-break { page-break-before: always; }
+    @media print {
+        .editor, .io { display:none; }
+        .page-break { page-break-before: always; }
+    }
+</style>
+</head>
+
+<body>
+
+<h2>📄 放送原稿ツール</h2>
+
+<div class="io">
+    <h3>JSON入力</h3>
+    <p>※改行は <code>\n</code> を使ってください。</p>
+    <textarea id="jsonInput" placeholder='{"2025-11-27":{"op":"…","z":"…","ed":"…"}}'></textarea>
+    <button onclick="loadJSON()">読み込み</button>
+
+    <h3>JSON出力</h3>
+    <p>※改行は <code>\n</code> で保存されます。</p>
+    <textarea id="jsonOutput" readonly></textarea>
+</div>
+
+
+<hr>
+
+<div id="editorArea" class="editor"></div>
+
+<button onclick="addNew()">＋ 新しい日付を追加</button>
+<button onclick="exportJSON()">JSONを書き出す</button>
+
+
+<script>
+
+// -----------------------------------------------------
+// 保存されているデータ
+// -----------------------------------------------------
+let data = {};  // {日付: {op, z, ed}}
+
+
+// -----------------------------------------------------
+// JSON読み込み
+// -----------------------------------------------------
+function loadJSON() {
+    try {
+        const input = document.getElementById("jsonInput").value.trim();
+        if (!input) return;
+
+        data = JSON.parse(input);
+        render();
+    } catch (e) {
+        alert("JSONが正しくありません");
+    }
+}
+
+
+// -----------------------------------------------------
+// JSON書き出し
+// -----------------------------------------------------
+function exportJSON() {
+    document.getElementById("jsonOutput").value =
+        JSON.stringify(data, null, 2);
+}
+
+
+// -----------------------------------------------------
+// 日付ブロックをレンダリング
+// -----------------------------------------------------
+function render() {
+    const area = document.getElementById("editorArea");
+    area.innerHTML = "";
+
+    Object.keys(data).sort().forEach((date, index) => {
+        const b = document.createElement("div");
+        b.className = "box";
+
+        // 印刷時ページ区切り
+        if (index > 0) b.classList.add("page-break");
+
+        b.innerHTML = `
+            <h3>${date}</h3>
+            <button onclick="del('${date}')">削除</button><br><br>
+
+            <b>オープニング</b><br>
+            <textarea onchange="update('${date}', 'op', this.value)">${data[date].op}</textarea><br><br>
+
+            <b>雑学</b><br>
+            <textarea onchange="update('${date}', 'z', this.value)">${data[date].z}</textarea><br><br>
+
+            <b>エンディング</b><br>
+            <textarea onchange="update('${date}', 'ed', this.value)">${data[date].ed}</textarea>
+        `;
+        area.appendChild(b);
+    });
+}
+
+
+// -----------------------------------------------------
+// 編集更新
+// -----------------------------------------------------
+function update(date, key, value) {
+    data[date][key] = value;
+}
+
+
+// -----------------------------------------------------
+// 新しい日付追加
+// -----------------------------------------------------
+function addNew() {
+    const d = prompt("日付を入力 (例: 2025-11-27)");
+    if (!d) return;
+
+    if (data[d]) {
+        alert("その日付はすでにあります");
+        return;
+    }
+
+    data[d] = { op: "", z: "", ed: "" };
+    render();
+}
+
+
+// -----------------------------------------------------
+// 削除（最後の1つでも削除できる）
+// -----------------------------------------------------
+function del(date) {
+    if (!confirm(date + " を削除しますか？")) return;
+    delete data[date];
+    render();
+}
+
+</script>
+
+</body>
+</html>
